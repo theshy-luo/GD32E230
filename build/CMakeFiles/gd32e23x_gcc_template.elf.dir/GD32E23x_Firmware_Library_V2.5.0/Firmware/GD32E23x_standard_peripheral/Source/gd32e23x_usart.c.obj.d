@@ -1,0 +1,28 @@
+CMakeFiles/gd32e23x_gcc_template.elf.dir/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Source/gd32e23x_usart.c.obj: \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Source/gd32e23x_usart.c \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_usart.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/CMSIS/GD/GD32E23x/Include/gd32e23x.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/CMSIS/core_cm23.h \
+ /usr/lib/gcc/arm-none-eabi/13.2.1/include/stdint.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/CMSIS/cmsis_compiler.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/CMSIS/cmsis_gcc.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/CMSIS/GD/GD32E23x/Include/system_gd32e23x.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/app/gd32e23x_libopt.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_adc.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_cmp.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_crc.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_dbg.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_dma.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_exti.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_fmc.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_fwdgt.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_gpio.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_i2c.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_misc.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_pmu.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_rcu.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_rtc.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_spi.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_syscfg.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_timer.h \
+ /home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/GD32E23x_Firmware_Library_V2.5.0/Firmware/GD32E23x_standard_peripheral/Include/gd32e23x_wwdgt.h

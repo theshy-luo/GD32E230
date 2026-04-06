@@ -1,0 +1,3 @@
+/home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/build/CMakeFiles/gd32e23x_gcc_template.elf.dir
+/home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/build/CMakeFiles/edit_cache.dir
+/home/dministrator/microcontroller/gd32/gd32e23x_gcc_template/build/CMakeFiles/rebuild_cache.dir
