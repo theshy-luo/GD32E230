@@ -23,6 +23,9 @@ int main(void)
         VOLTAGE_OK_13V,
     };
 
+    /* [重要] 预留 500ms 调试窗口，防止 SWD 引脚被锁定后无法下载程序 */
+    delay_1ms(500);
+
     /* 1. 初始化基础外设 (LED) */
     gd_eval_led_init(LED1);
     gd_eval_led_init(LED2);
