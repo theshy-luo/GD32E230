@@ -62,14 +62,14 @@ typedef enum {
 
 /* ADC 采样通道逻辑映射 (对应数组下标) */
 typedef enum {
-    ADC_CH_48V  = 0,
+    ADC_CH_48V  = 0, // 多余
     ADC_CH_36V  = 1,
     ADC_CH_9V   = 2,
     ADC_CH_13V  = 3,
-    ADC_CH_V1P4 = 4,
+    ADC_CH_V1P4 = 4, // 多余
     ADC_CH_2V   = 5,
     ADC_CH_5V   = 6,
-    ADC_CH_V3P3 = 7,
+    ADC_CH_V3P3 = 7, // 多余
 } adc_channel_input_voltage;
 
 /* 引脚基础信息结构 */
