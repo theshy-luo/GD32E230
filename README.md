@@ -1,94 +1,69 @@
-# GD32E23x GCC Template
+# GD32E23x 电源监控与顺序控制系统
 
-这是一个基于 `GD32E23x_Firmware_Library_V2.5.0` 搭的最小 `GCC + CMake` 模板。
-当前工程默认使用项目目录内自带的固件库副本，不再依赖下载目录的绝对路径。
+本项目基于 `GD32E230` 微控制器实现了一套工业级的电源顺序开启与实时监控系统。支持多路电压的先决条件判定、超采样滤波算法以及锁存故障保护。
+
+## 核心业务逻辑
+
+### 1. 工业级 ADC 采样滤波
+为了确保在复杂的电磁环境下电压判定的准确性，系统采用了以下多层滤波设计：
+- **超采样 (Oversampling)**：ADC 配置为 8 通道 DMA 循环扫描。在中断中进行 **64 次累加采样**，通过位移运算获取平滑均值。
+- **状态持久化判定 (Persistence)**：
+  - **进入 OK 状态**：电压均值必须连续 **10 次**（约 23ms）稳定在 2000-2100 采样范围内。
+  - **进入 Fault 状态**：电压均值必须连续 **5 次**（约 11.5ms）脱离正常范围。
+- **响应速度**：从物理电压变化到逻辑判定生效，最快响应时间约为几毫秒到几十毫秒，远快于电源轨的上升/下降周期。
+
+### 2. 顺序开启与先决条件 (Startup Sequence)
+电源开启遵循严格的依赖链，采用“死等”模式，直到所有前置电压稳定：
+- **5V**：依赖 48V OK。
+- **9V**：依赖 48V、5V、3.3V 全部 OK。
+- **2V**：依赖 48V、5V、3.3V、9V 全部 OK。
+- **13V**：依赖 48V、5V、3.3V、9V、2V 全部 OK。
+- **36V**：依赖 48V、5V、3.3V、9V、2V、13V 全部 OK。
+
+### 3. 故障处理与保护 (Fault Protection)
+一旦系统进入 `SYS_FAULT` 状态，将触发保护逻辑并锁定，不再自动监测：
+- **故障关断顺序**：
+  - 若为 48V 异常：仅切断 36V 使能信号。
+  - 若为其他任意支路异常：按 **36V -> 13V -> 2V** 的顺序依次撤销使能信号。
+- **LED 指示**：
+  - `LED1`：实时反映 48V 状态（亮=正常，灭=异常）。
+  - `LED2`：综合监控其他 7 路（只要有一路异常即熄灭）。
+
+## 硬件配置 (Pinout & Polarity)
+
+| 功能信号 | 引脚 | 极性 (Active/OK) | 作用描述 |
+| :--- | :--- | :--- | :--- |
+| 48V 采样 | PA0 | N/A (Analog) | 输入源监控 |
+| 5V Enable | PA10 | **高有效 (High)** | 使能 5V 输出 |
+| 9V Enable | PA9 | **低有效 (Low)** | 使能 9V 输出 |
+| 2V Enable | PB1 | **低有效 (Low)** | 使能 2V 输出 |
+| 13V Enable | PA14 | **高有效 (High)** | 使能 13V 输出 |
+| 36V Enable | PA13 | **低有效 (Low)** | 使能 36V 输出 |
+| LED1 | PF0 | 高亮 | 48V 监控指示 |
+| LED2 | PF1 | 高亮 | 全局健康指示 |
+
+## 构建指南
+
+### 前提条件
+- `Arm GNU Toolchain` (arm-none-eabi-gcc)
+- `CMake` (>= 3.20)
+- `Make` 或 `Ninja`
+
+### 编译步骤
+请务必指定自带的工具链文件，否则 CMake 将默认使用主机编译器导致编译失败。
+
+```bash
+# 1. 进入构建目录
+mkdir -p build && cd build
+
+# 2. 配置工程 (指定工具链)
+cmake -DCMAKE_TOOLCHAIN_FILE=../toolchain/arm-none-eabi.cmake ..
+
+# 3. 编译
+make -j
+```
 
 ## 目录结构
-
-```text
-gd32e23x_gcc_template/
-├── app/
-│   ├── gd32e23x_it.c
-│   ├── gd32e23x_it.h
-│   ├── gd32e23x_libopt.h
-│   ├── main.c
-│   ├── systick.c
-│   └── systick.h
-├── cmake/
-│   └── arm-none-eabi-gcc.cmake
-├── CMakeLists.txt
-└── README.md
-```
-
-## 当前配置
-
-- 工具链：`arm-none-eabi-gcc`
-- 内核：`cortex-m23`
-- 启动文件：官方 GCC 版本 `startup_gd32e23x.S`
-- 链接脚本：官方 GCC 版本 `gd32e230x8_flash.ld`
-- 示例功能：点亮并翻转 `GD32E230C-EVAL` 的 `LED1`
-
-## 前提
-
-你需要先安装：
-
-- `Arm GNU Toolchain`
-- `CMake`
-- `Ninja`（推荐）
-
-并确保这些命令可用：
-
-```powershell
-arm-none-eabi-gcc --version
-cmake --version
-ninja --version
-```
-
-## 配置
-
-默认官方固件库路径写在 `CMakeLists.txt` 里：
-
-```cmake
-set(GD32_FW_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/GD32E23x_Firmware_Library_V2.5.0")
-```
-
-如果你后面换了路径，可以直接改这个变量，或者在配置时覆盖：
-
-```powershell
-cmake -S . -B build -G Ninja ^
-  -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake ^
-  -DGD32_FW_ROOT="你的固件库路径"
-```
-
-## 构建
-
-```powershell
-cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
-cmake --build build
-```
-
-构建后会生成：
-
-- `gd32e23x_gcc_template.elf`
-- `gd32e23x_gcc_template.hex`
-- `gd32e23x_gcc_template.bin`
-- `compile_commands.json`
-
-## clangd
-
-这个模板已经开启：
-
-```cmake
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-```
-
-所以配置成功后，`build/compile_commands.json` 就能直接给 `clangd` 用。
-
-如果你的编辑器希望在工程根目录找到它，可以手动复制或建立软链接。
-
-## 后续怎么改成你自己的项目
-
-1. 先把 `main.c` 改成自己的业务逻辑
-2. 如果不是官方评估板，替换掉 `gd32e230c_eval.c/.h` 的依赖
-3. 现在 `ADC / DMA / TIMER / GPIO / RCU / USART / MISC` 已经默认加入
-4. 如果芯片容量不是 `x8`，把链接脚本改成对应型号
+- `app/`：核心业务逻辑 (`main.c`) 与中断处理 (`gd32e23x_it.c`)。
+- `toolchain/`：交叉编译配置文件。
+- `Utilities/`：封装的硬件抽象层 (HAL)，如 `gd_eval_power_en_set`。
