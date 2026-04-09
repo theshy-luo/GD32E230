@@ -1,5 +1,6 @@
 ﻿# Visual Studio 2022 cache/options directory
 .vs/
+.codex
 
 .vscode/
 *.code-workspace

@@ -38,6 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gd32e23x.h"
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,7 +62,7 @@ typedef enum {
 } power_en_typedef_enum;
 
 /* ADC 通道逻辑映射 */
-typedef enum {
+typedef enum {  
     ADC_CH_48V  = 0,
     ADC_CH_36V  = 1,
     ADC_CH_9V   = 2,
@@ -72,12 +73,12 @@ typedef enum {
     ADC_CH_V3P3 = 7,
 } adc_channel_input_voltage;
 
-/* 工业级采样状态结构体 */
+/* 采样状态结构体 */
 typedef struct {
     uint32_t sum;            /* 累加值 (用于超采样) */
     uint16_t avg;            /* 滤波后的平均值 */
-    uint8_t  stable_ok_cnt;  /* 稳定在范围内的计数器 */
-    uint8_t  stable_err_cnt; /* 稳定在范围外的计数器 */
+    uint8_t  stable_ok_cnt;  /* 稳定在范围内的计数器 (连续正常次数)*/
+    uint8_t  stable_err_cnt; /* 稳定在范围外的计数器 (连续异常次数)*/
     uint8_t  is_ok;          /* 当前判定的 OK 状态 */
 } adc_channel_state_t;
 
@@ -85,6 +86,7 @@ typedef struct {
 typedef struct {
     uint16_t min;            /* 正常范围下限 */
     uint16_t max;            /* 正常范围上限 */
+    bool ignore;             /* 为 true 时，该通道不参与 OK/NG 判定 */
 } adc_threshold_t;
 
 /* 引脚基础信息结构 */
@@ -136,6 +138,7 @@ typedef struct {
 uint16_t gd_eval_adc_get_value(uint8_t index);
 adc_channel_state_t* gd_eval_adc_get_chan_state(uint8_t index);
 void gd_eval_adc_set_threshold(uint8_t index, uint16_t min, uint16_t max);
+void gd_eval_adc_set_ignore(uint8_t index, bool ignore);
 adc_threshold_t gd_eval_adc_get_threshold(uint8_t index);
 
 /* LED 操作 */

@@ -35,7 +35,11 @@ int main(void)
 {       
     systick_config();
     
-    /* 初始化 8 路 ADC 通道 */
+    /*
+     * ADC 顺序必须和 adc_channel_input_voltage 枚举保持一致。
+     * 这样中断里按索引写入 adc_chan_stadc_channel_input_voltageates[i] 后，才能直接
+     * 用 ADC_CH_xxx 作为索引读取对应电压轨状态。
+     */
     uint8_t channels[8] = {
         ADC_CH_48V, ADC_CH_36V, ADC_CH_9V, ADC_CH_13V, 
         ADC_CH_V1P4, ADC_CH_2V, ADC_CH_5V, ADC_CH_V3P3
@@ -47,19 +51,17 @@ int main(void)
     /* 1. 初始化外设 */
     gd_eval_led_init(LED1);
     gd_eval_led_init(LED2);
-    gd_eval_power_en_init();
+    gd_eval_power_en_init();  //确保系统刚启动时所有受控电源都处于安全关闭状态
     
-    /* 2. 初始化 ADC (DMA + 中断超采样) */
+    /* 2. 初始化 ADC (DMA + 中断超采样), 按设定顺序不断循环采 8 路电压 */
     gd_eval_adc_init_multi_channel(channels, 8);
-
-    /* 3. 配置每路电压的独立阈值 (根据实际分压电路计算) */
-    gd_eval_adc_set_threshold(ADC_CH_48V, 2048, 2500); // 示例: 48V 的范围
-    gd_eval_adc_set_threshold(ADC_CH_5V,  1800, 2200); // 示例: 5V 的范围
-    // 其他路如果不设置，默认使用驱动中定义的 2000-2100
 
     while (1) 
     {
-        /* 等待 DMA 超采样轮询完成标志 (每 64 次触发一次) */
+        /*
+         * 只在“64 次超采样结果完成”后推进状态机，
+         * 避免在原始采样抖动期间频繁切换电源控制输出。
+         */
         if (adc_data_ready_flag) 
         {
             adc_data_ready_flag = 0;
@@ -72,7 +74,7 @@ int main(void)
 }
 
 /**
- * @brief 核心状态机逻辑
+ * 上电时序判断，LED状态表示
  */
 void process_system_state(void)
 {
@@ -82,7 +84,7 @@ void process_system_state(void)
         return;
     }
 
-    /* 基础状态监测：LED1 反映 48V 状态 */
+    /* LED1 只表达输入母线 48V 是否已经稳定进入 OK 窗口。 */
     if (check_rail_ok(ADC_CH_48V)) 
     {
         gd_eval_led_on(LED1);
@@ -92,7 +94,10 @@ void process_system_state(void)
         gd_eval_led_off(LED1);
     }
 
-    /* LED2 逻辑：监测除 48V 外的另外 7 路。任何一路异常都灭 */
+    /*
+     * LED2 反映“其余 7 路是否全部健康”。
+     * 这盏灯不区分当前系统处于启动阶段还是正常阶段，只关心观测结果。
+     */
     if (check_rail_ok(ADC_CH_36V) && check_rail_ok(ADC_CH_9V) && 
         check_rail_ok(ADC_CH_13V) && check_rail_ok(ADC_CH_V1P4) && 
         check_rail_ok(ADC_CH_2V) && check_rail_ok(ADC_CH_5V) && 
@@ -110,7 +115,7 @@ void process_system_state(void)
     {
         case SYS_IDLE:
         {
-            /* 1. 等待 48V 输入正常 */
+            /* 起点状态: 外部 48V 还没被确认稳定，所有受控输出保持关闭。 */
             if (check_rail_ok(ADC_CH_48V)) 
             {
                 g_system_state = SYS_STARTUP_5V;
@@ -121,16 +126,19 @@ void process_system_state(void)
 
         case SYS_STARTUP_5V:
         {
-            /* 2. 5V 启动先决条件: 48V 必须持续 OK */
+            /*
+             * 5V 是第一路受控输出。
+             * 只要 48V 在等待过程中掉线，就撤回 5V 并退回起点重新等。
+             */
             if (!check_rail_ok(ADC_CH_48V)) 
             {
-                /* 如果 48V 丢了，退回 IDLE 并关掉 5V (非故障，只是等待阶段) */
+                /* 这里不记为故障，因为系统还处于上电准备阶段。 */
                 gd_eval_power_en_set(POWER_EN_5V, 0);
                 g_system_state = SYS_IDLE;
             } 
             else if (check_rail_ok(ADC_CH_5V)) 
             {
-                /* 5V 正常后，准备开启 9V (依赖: 48, 5, 3.3) */
+                /* 5V 自身稳定后，再检查 9V 所需依赖是否已经具备。 */
                 if (check_rail_ok(ADC_CH_V3P3)) 
                 {
                     gd_eval_power_en_set(POWER_EN_9V, 1);
@@ -142,10 +150,10 @@ void process_system_state(void)
 
         case SYS_STARTUP_9V:
         {
-            /* 3. 9V 启动确认 */
+            /* 进入该状态意味着 9V 使能已经发出，现在只等待采样确认。 */
             if (!check_rail_ok(ADC_CH_48V) || !check_rail_ok(ADC_CH_5V) || !check_rail_ok(ADC_CH_V3P3)) 
             {
-                /* 依赖项丢失，进入错误处理 (启动失败) */
+                /* 已经走到中途时依赖丢失，按启动失败处理并锁定。 */
                 handle_fault_sequence(FAULT_OTHER);
             } else if (check_rail_ok(ADC_CH_9V)) {
                 /* 开启 2V (依赖: 48, 5, 3.3, 9) */
@@ -208,8 +216,11 @@ void process_system_state(void)
 
         case SYS_NORMAL:
         {
-            /* 7. 正常监测阶段逻辑 */
-            /* 48V 不正常时的逻辑 */
+            /*
+             * 正常运行阶段分两类 fault:
+             * 1. 48V 母线故障，单独走 FAULT_48V 分支
+             * 2. 其余任意一路故障，统一走 FAULT_OTHER
+             */
             if (!check_rail_ok(ADC_CH_48V)) 
             {
                 handle_fault_sequence(FAULT_48V);
@@ -236,6 +247,16 @@ void process_system_state(void)
  */
 uint8_t check_rail_ok(adc_channel_input_voltage ch)
 {
+    /*
+     * ignore 通道在业务上视为“总是 OK”。
+     * 这样主状态机和 LED 聚合判断都不需要额外写分支。
+     */
+    adc_threshold_t threshold = gd_eval_adc_get_threshold((uint8_t)ch);
+    if (threshold.ignore)
+    {
+        return 1;
+    }
+
     adc_channel_state_t* state = gd_eval_adc_get_chan_state(ch);
     if(state) 
     {

@@ -37,7 +37,7 @@ void DMA_Channel0_IRQHandler(void)
             adc_channel_state_t* state = gd_eval_adc_get_chan_state(i);
             if(state) 
             {
-                state->sum += gd_eval_adc_get_value(i);
+                state->sum += gd_eval_adc_get_value(i);  //把第 i 路当前最新一次 ADC 原始值取出来，累加到 sum 里
             }
         }
         
@@ -47,6 +47,10 @@ void DMA_Channel0_IRQHandler(void)
         {
             adc_sample_tick = 0;
             
+            /*
+             * 这里才真正把“64 次原始采样”折算成一次业务可用结果。
+             * 主循环看到的 is_ok/avg，都是在这一步统一更新后的快照。
+             */
             for(uint8_t i = 0; i < 8; i++) 
             {
                 adc_channel_state_t* state = gd_eval_adc_get_chan_state(i);
@@ -56,10 +60,27 @@ void DMA_Channel0_IRQHandler(void)
                 state->avg = (uint16_t)(state->sum >> 6); // sum / 64
                 state->sum = 0;
                 
-                /* 获取本通道独立的阈值配置 */
+                /* 获取本通道独立的阈值配置,DMA 中断在处理第 i 路 ADC 时，先把这一路的阈值配置取出来，再用threshold.min.max.ignore去决定这一路怎么判定 is_ok */
                 adc_threshold_t threshold = gd_eval_adc_get_threshold(i);
+                if (threshold.ignore)
+                {
+                    /*
+                     * ignore 只跳过当前通道，不能提前退出中断。
+                     * 否则后续通道不会更新，adc_data_ready_flag 也不会置位，
+                     * 主状态机将卡在旧数据上。
+                     */
+                    state->stable_ok_cnt = 0;
+                    state->stable_err_cnt = 0;
+                    state->is_ok = 1;
+                    continue;
+                }
                 
-                /* 稳定性判定 (使用配置好的 min-max 范围) */
+                /*
+                 * 稳定性判定:
+                 * 1. 先判断均值是否落在该通道窗口内
+                 * 2. 再用持续计数器过滤抖动
+                 * 3. 只有“连续多次”满足条件才更新 is_ok
+                 */
                 if(state->avg >= threshold.min && state->avg <= threshold.max) 
                 {
                     if(state->stable_ok_cnt < 255) state->stable_ok_cnt++;
