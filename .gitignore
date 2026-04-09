@@ -1,0 +1,14 @@
+﻿# Visual Studio 2022 cache/options directory
+.vs/
+
+.vscode/
+*.code-workspace
+
+# CMake-generated build files
+out/
+build/
+doxygen/
+
+# clangd cache
+.cache/
+.codeartsdoer

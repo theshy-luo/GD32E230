@@ -51,26 +51,35 @@ typedef enum {
     LED2 = 1,
 } led_typedef_enum;
 
-/* 电压 OK 信号输出索引 */
+/* 电源使能信号输出索引 */
 typedef enum {
-    VOLTAGE_OK_2V  = 0,
-    VOLTAGE_OK_5V  = 1,
-    VOLTAGE_OK_9V  = 2,
-    VOLTAGE_OK_36V = 3,
-    VOLTAGE_OK_13V = 4,
-} voltage_ok_typedef_enum;
+    POWER_EN_2V  = 0,
+    POWER_EN_5V  = 1,
+    POWER_EN_9V  = 2,
+    POWER_EN_36V = 3,
+    POWER_EN_13V = 4,
+} power_en_typedef_enum;
 
-/* ADC 采样通道逻辑映射 (对应数组下标) */
+/* ADC 通道逻辑映射 */
 typedef enum {
-    ADC_CH_48V  = 0, // 多余
+    ADC_CH_48V  = 0,
     ADC_CH_36V  = 1,
     ADC_CH_9V   = 2,
     ADC_CH_13V  = 3,
-    ADC_CH_V1P4 = 4, // 多余
+    ADC_CH_V1P4 = 4,
     ADC_CH_2V   = 5,
     ADC_CH_5V   = 6,
-    ADC_CH_V3P3 = 7, // 多余
+    ADC_CH_V3P3 = 7,
 } adc_channel_input_voltage;
+
+/* 工业级采样状态结构体 */
+typedef struct {
+    uint32_t sum;            /* 累加值 (用于超采样) */
+    uint16_t avg;            /* 滤波后的平均值 */
+    uint8_t  stable_ok_cnt;  /* 稳定在范围内的计数器 */
+    uint8_t  stable_err_cnt; /* 稳定在范围外的计数器 */
+    uint8_t  is_ok;          /* 当前判定的 OK 状态 */
+} adc_channel_state_t;
 
 /* 引脚基础信息结构 */
 typedef struct {
@@ -82,7 +91,7 @@ typedef struct {
 /* ----------------- 硬件资源常量 ----------------- */
 
 #define LEDn            2U
-#define VOLTAGE_OK_NUM  5U
+#define POWER_EN_NUM    5U
 #define ADC_CHANNEL_NUM 8U
 
 /* LED 引脚定义 (PF组) */
@@ -95,30 +104,31 @@ typedef struct {
 #define LED2_GPIO_CLK   GPIOF
 
 /* 电压判定输出引脚定义 */
-#define VOLTAGE_OK_2V_PIN   GPIO_PIN_1
-#define VOLTAGE_OK_2V_PORT  GPIOB
-#define VOLTAGE_OK_2V_CLK   GPIOB
+#define POWER_EN_2V_PIN   GPIO_PIN_1
+#define POWER_EN_2V_PORT  GPIOB
+#define POWER_EN_2V_CLK   GPIOB
 
-#define VOLTAGE_OK_5V_PIN   GPIO_PIN_10
-#define VOLTAGE_OK_5V_PORT  GPIOA
-#define VOLTAGE_OK_5V_CLK   GPIOA
+#define POWER_EN_5V_PIN   GPIO_PIN_10
+#define POWER_EN_5V_PORT  GPIOA
+#define POWER_EN_5V_CLK   GPIOA
 
-#define VOLTAGE_OK_9V_PIN   GPIO_PIN_9
-#define VOLTAGE_OK_9V_PORT  GPIOA
-#define VOLTAGE_OK_9V_CLK   GPIOA
+#define POWER_EN_9V_PIN   GPIO_PIN_9
+#define POWER_EN_9V_PORT  GPIOA
+#define POWER_EN_9V_CLK   GPIOA
 
-#define VOLTAGE_OK_36V_PIN  GPIO_PIN_13
-#define VOLTAGE_OK_36V_PORT GPIOA
-#define VOLTAGE_OK_36V_CLK  GPIOA
+#define POWER_EN_36V_PIN  GPIO_PIN_13
+#define POWER_EN_36V_PORT GPIOA
+#define POWER_EN_36V_CLK  GPIOA
 
-#define VOLTAGE_OK_13V_PIN  GPIO_PIN_14
-#define VOLTAGE_OK_13V_PORT GPIOA
-#define VOLTAGE_OK_13V_CLK  GPIOA
+#define POWER_EN_13V_PIN  GPIO_PIN_14
+#define POWER_EN_13V_PORT GPIOA
+#define POWER_EN_13V_CLK  GPIOA
 
 /* ----------------- 访问接口 ----------------- */
 
-/* ADC 数据获取 (由 DMA 自动填充) */
+/* ADC 数据获取 */
 uint16_t gd_eval_adc_get_value(uint8_t index);
+adc_channel_state_t* gd_eval_adc_get_chan_state(uint8_t index);
 
 /* LED 操作 */
 void gd_eval_led_init(led_typedef_enum lednum);
@@ -127,14 +137,11 @@ void gd_eval_led_off(led_typedef_enum lednum);
 void gd_eval_led_toggle(led_typedef_enum lednum);
 
 /* ADC 初始化 (DMA模式) */
-void gd_eval_adc_init_once_channel(uint8_t channel);
 void gd_eval_adc_init_multi_channel(uint8_t *channels, uint32_t length);
 
-/* 电压 OK 信号操作 */
-void gd_eval_voltage_ok_init(voltage_ok_typedef_enum list[], uint32_t len);
-void gd_eval_voltage_ok_on(voltage_ok_typedef_enum pin);
-void gd_eval_voltage_ok_off(voltage_ok_typedef_enum pin);
-void gd_eval_voltage_ok_toggle(voltage_ok_typedef_enum pin);
+/* 电源使能控制 (根据极性自动切换) */
+void gd_eval_power_en_init(void);
+void gd_eval_power_en_set(power_en_typedef_enum en_idx, uint8_t state);
 
 #ifdef __cplusplus
 }
