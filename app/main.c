@@ -52,6 +52,11 @@ int main(void)
     /* 2. 初始化 ADC (DMA + 中断超采样) */
     gd_eval_adc_init_multi_channel(channels, 8);
 
+    /* 3. 配置每路电压的独立阈值 (根据实际分压电路计算) */
+    gd_eval_adc_set_threshold(ADC_CH_48V, 2048, 2500); // 示例: 48V 的范围
+    gd_eval_adc_set_threshold(ADC_CH_5V,  1800, 2200); // 示例: 5V 的范围
+    // 其他路如果不设置，默认使用驱动中定义的 2000-2100
+
     while (1) 
     {
         /* 等待 DMA 超采样轮询完成标志 (每 64 次触发一次) */

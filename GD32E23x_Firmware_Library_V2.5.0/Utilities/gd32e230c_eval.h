@@ -81,6 +81,12 @@ typedef struct {
     uint8_t  is_ok;          /* 当前判定的 OK 状态 */
 } adc_channel_state_t;
 
+/* ADC 阈值配置结构体 */
+typedef struct {
+    uint16_t min;            /* 正常范围下限 */
+    uint16_t max;            /* 正常范围上限 */
+} adc_threshold_t;
+
 /* 引脚基础信息结构 */
 typedef struct {
     uint32_t pin;
@@ -129,6 +135,8 @@ typedef struct {
 /* ADC 数据获取 */
 uint16_t gd_eval_adc_get_value(uint8_t index);
 adc_channel_state_t* gd_eval_adc_get_chan_state(uint8_t index);
+void gd_eval_adc_set_threshold(uint8_t index, uint16_t min, uint16_t max);
+adc_threshold_t gd_eval_adc_get_threshold(uint8_t index);
 
 /* LED 操作 */
 void gd_eval_led_init(led_typedef_enum lednum);

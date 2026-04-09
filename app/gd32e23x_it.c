@@ -56,8 +56,11 @@ void DMA_Channel0_IRQHandler(void)
                 state->avg = (uint16_t)(state->sum >> 6); // sum / 64
                 state->sum = 0;
                 
-                /* 稳定性判定 (2000-2100) */
-                if(state->avg >= 2000 && state->avg <= 2100) 
+                /* 获取本通道独立的阈值配置 */
+                adc_threshold_t threshold = gd_eval_adc_get_threshold(i);
+                
+                /* 稳定性判定 (使用配置好的 min-max 范围) */
+                if(state->avg >= threshold.min && state->avg <= threshold.max) 
                 {
                     if(state->stable_ok_cnt < 255) state->stable_ok_cnt++;
                     state->stable_err_cnt = 0;

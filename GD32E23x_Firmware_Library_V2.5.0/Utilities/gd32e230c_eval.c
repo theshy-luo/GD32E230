@@ -9,6 +9,12 @@
 static uint16_t adc_raw_value[8];
 static adc_channel_state_t adc_chan_states[8];
 
+/* 默认 8 路全部为 2000-2100 范围，后续可通过 gd_eval_adc_set_threshold 修改 */
+static adc_threshold_t adc_chan_thresholds[8] = {
+    {2000, 2100}, {2000, 2100}, {2000, 2100}, {2000, 2100},
+    {2000, 2100}, {2000, 2100}, {2000, 2100}, {2000, 2100}
+};
+
 /* 延迟函数弱定义 */
 __attribute__((weak)) void delay_1ms(uint32_t count) { (void)count; }
 
@@ -48,6 +54,22 @@ uint16_t gd_eval_adc_get_value(uint8_t index)
 adc_channel_state_t* gd_eval_adc_get_chan_state(uint8_t index)
 {
     return (index < 8) ? &adc_chan_states[index] : NULL;
+}
+
+/* 设置通道阈值 */
+void gd_eval_adc_set_threshold(uint8_t index, uint16_t min, uint16_t max)
+{
+    if (index < 8) {
+        adc_chan_thresholds[index].min = min;
+        adc_chan_thresholds[index].max = max;
+    }
+}
+
+/* 获取当前配置阈值 */
+adc_threshold_t gd_eval_adc_get_threshold(uint8_t index)
+{
+    adc_threshold_t invalid = {0, 0};
+    return (index < 8) ? adc_chan_thresholds[index] : invalid;
 }
 
 /* 初始化特定 LED */
