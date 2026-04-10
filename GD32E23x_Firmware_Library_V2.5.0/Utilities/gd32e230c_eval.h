@@ -141,7 +141,8 @@ void gd_eval_adc_set_threshold(uint8_t index, uint16_t min, uint16_t max);
 void gd_eval_adc_set_ignore(uint8_t index, bool ignore);
 adc_threshold_t gd_eval_adc_get_threshold(uint8_t index);
 
-/* LED 操作 */
+/* 通讯与调试 */
+void gd_uart_debug_send_info(void);
 void gd_eval_led_init(led_typedef_enum lednum);
 void gd_eval_led_on(led_typedef_enum lednum);
 void gd_eval_led_off(led_typedef_enum lednum);

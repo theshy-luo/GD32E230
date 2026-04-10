@@ -46,7 +46,15 @@ int main(void)
     };
     
     /* 预留 500ms 调试窗口 */
-    delay_1ms(500);
+    delay_1ms(100);
+    
+    /* 连续发送 3 次开机信息，确保主控即便启动稍慢也能稳定接收 */
+    for(int i = 0; i < 3; i++) {
+        gd_uart_debug_send_info(); 
+        delay_1ms(50);
+    }
+    
+    delay_1ms(250); 
 
     /* 1. 初始化外设 */
     gd_eval_led_init(LED1);

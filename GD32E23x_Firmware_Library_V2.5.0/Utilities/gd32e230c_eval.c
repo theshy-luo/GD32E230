@@ -239,3 +239,97 @@ static void gd_eval_adc_default_config(uint32_t channel_length)
     adc_data_alignment_config(ADC_DATAALIGN_RIGHT);
     adc_channel_length_config(ADC_REGULAR_CHANNEL, channel_length);
 }
+
+/**
+ * @brief 通过 PA9 (USART0_TX) 发送带校验的编译信息 ($BOOT...*XX\r\n)
+ * @note  采用类似 NMEA 0183 协议的 XOR 校验，方便主控端稳健解析
+ */
+void gd_uart_debug_send_info(void)
+{
+    /* 1. 开启时钟 */
+    rcu_periph_clock_enable(RCU_GPIOA);
+    rcu_periph_clock_enable(RCU_USART0);
+
+    /* 2. 配置 PA9 为复用功能 USART0_TX */
+    gpio_af_set(GPIOA, GPIO_AF_1, GPIO_PIN_9);
+    gpio_mode_set(GPIOA, GPIO_MODE_AF, GPIO_PUPD_PULLUP, GPIO_PIN_9);
+    gpio_output_options_set(GPIOA, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_9);
+
+    /* 3. 配置 USART0 (115200, 8-N-1) */
+    usart_deinit(USART0);
+    usart_baudrate_set(USART0, 115200U);
+    usart_word_length_set(USART0, USART_WL_8BIT);
+    usart_stop_bit_set(USART0, USART_STB_1BIT);
+    usart_parity_config(USART0, USART_PM_NONE);
+    usart_hardware_flow_rts_config(USART0, USART_RTS_DISABLE);
+    usart_hardware_flow_cts_config(USART0, USART_CTS_DISABLE);
+    usart_receive_config(USART0, USART_RECEIVE_DISABLE);
+    usart_transmit_config(USART0, USART_TRANSMIT_ENABLE);
+    usart_enable(USART0);
+
+    /* 4. 组装数据并计算 XOR 校验和 */
+    char content[64];
+    uint8_t checksum = 0;
+    
+    // 生成核心数据部分: BOOT,DATE=...,TIME=...
+    int data_len = snprintf(content, sizeof(content), "BOOT,DATE=%s,TIME=%s", __DATE__, __TIME__);
+    
+    // 对核心内容进行异或
+    for(int i = 0; i < data_len; i++) {
+        checksum ^= (uint8_t)content[i];
+    }
+    
+    // 拼装完整帧: $ + 内容 + * + 2位16进制校验 + \r\n
+    char final_packet[128];
+    int packet_len = snprintf(final_packet, sizeof(final_packet), "$%s*%02X\r\n", content, checksum);
+    
+    // 发送
+    for(int i = 0; i < packet_len; i++) {
+        usart_data_transmit(USART0, (uint8_t)final_packet[i]);
+        while(RESET == usart_flag_get(USART0, USART_FLAG_TBE));
+    }
+    
+    /* 等待最后一帧数据发送完毕 */
+    while(RESET == usart_flag_get(USART0, USART_FLAG_TC));
+
+    /* 5. 现场清理并恢复 PA9 为 GPIO 高电平 (禁用 9V) */
+    usart_disable(USART0);
+    rcu_periph_clock_disable(RCU_USART0);
+    
+    gpio_mode_set(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO_PIN_9);
+    GPIO_BOP(GPIOA) = GPIO_PIN_9; 
+}
+
+/*
+ * [接收端参考伪代码 - 用于主控端解析 GD32 发出的引导信息]
+ * -----------------------------------------------------------------------------------------
+ * // 示例输入包: "$BOOT,DATE=Apr 10 2024,TIME=12:48:00*4F\r\n"
+ * 
+ * void process_gd32_boot_packet(char *packet_str) {
+ *     char *start_ptr = strchr(packet_str, '$');
+ *     char *end_ptr = strchr(packet_str, '*');
+ *     
+ *     if (start_ptr && end_ptr && (end_ptr > start_ptr)) {
+ *         uint8_t calculated_xor = 0;
+ *         
+ *         // 1. 计算 $ 和 * 之间所有字符的异或值
+ *         for (char *p = start_ptr + 1; p < end_ptr; p++) {
+ *             calculated_xor ^= (uint8_t)(*p);
+ *         }
+ *         
+ *         // 2. 解析字符串结尾的 2 位十六进制校验码
+ *         unsigned int received_xor = 0;
+ *         if (sscanf(end_ptr + 1, "%02X", &received_xor) == 1) {
+ *             
+ *             // 3. 比对校验值
+ *             if (calculated_xor == (uint8_t)received_xor) {
+ *                 // [校验成功] 数据完整，可以放心解析 DATE 和 TIME 字段
+ *                 // 使用 sscanf(start_ptr, "$BOOT,DATE=%[^,],TIME=%[^*]", date_buf, time_buf);
+ *             } else {
+ *                 // [校验失败] 数据在传输过程中可能受到电磁干扰
+ *             }
+ *         }
+ *     }
+ * }
+ * -----------------------------------------------------------------------------------------
+ */
