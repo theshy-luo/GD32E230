@@ -121,45 +121,53 @@ void gd_eval_led_toggle(led_typedef_enum lednum)
     GPIO_TG(LED_GPIO_PIN_INFO[lednum].port) = LED_GPIO_PIN_INFO[lednum].pin; 
 }
 
-/* 初始化 ADC 多通道扫描 (DMA 模式), 自动把采样结果搬到内存里，之后软件几乎不用手动管采样过程
-会让 ADC 不停地按48V-36V-9V-13V-1.4V-2V-5V-3.3V这个顺序循环采样, ADC每扫描完一轮，DMA就自动把结果写到 adc_raw_value[]
-ADC 会按设定顺序不断循环采 8 路电压，DMA 自动把结果写进内存，DMA 中断再去做滤波和状态判定*/
+/*
+ * 初始化 ADC 多通道扫描 (DMA 模式)。
+ * 这里配置 ADC 按 {48V, 36V, 9V, 13V, 1.4V, 2V, 5V, 3.3V} 的顺序自动进行无限循环采样。
+ * 采样结果会被 DMA 自动搬运到内存数组 adc_raw_value 中，完全不占用 CPU 时间。
+ */
 void gd_eval_adc_init_multi_channel(uint8_t channels[], uint32_t length)
 {
-    gd_eval_adc_default_config(length);   //调用基础 ADC 配置
+    gd_eval_adc_default_config(length);
     for (uint32_t i = 0; i < length; i++) 
     {
+        /* 将对应的引脚设置为模拟输入模式 */
         gpio_mode_set(ADC_PIN_INFO[channels[i]].port, GPIO_MODE_ANALOG, 
-            GPIO_PUPD_NONE, ADC_PIN_INFO[channels[i]].pin);  //把对应 GPIO 切成模拟模式,因为 ADC 要读模拟电压，所以这些脚不能还是普通数字输入/输出模式。
-         //i 是“它排在第几个采样”, channels[i] 是“采哪个 ADC 通道”, ADC_SAMPLETIME_41POINT5 是采样时间. 比如：第 0 个位置采 ADC_CH_48V
-        adc_regular_channel_config(i, channels[i], ADC_SAMPLETIME_41POINT5);  //配置 ADC 的采样序列,DMA 后面写进数组的顺序，就跟这里配置的顺序一一对应。
+            GPIO_PUPD_NONE, ADC_PIN_INFO[channels[i]].pin);
+        
+        /* 配置规则组通道序列：第 i 个位置采指定的 ADC 通道 */
+        adc_regular_channel_config(i, channels[i], ADC_SAMPLETIME_41POINT5);
     }
 
-    //regular 通道组不依赖外部定时器或外部事件来触发,允许 regular 转换触发机制生效,配合软件触发，实际就是“由软件启动一次，然后 ADC 自己连续跑下去”
+    /* 配置软件触发，不使用外部触发信号 */
     adc_external_trigger_source_config(ADC_REGULAR_CHANNEL, ADC_EXTTRIG_REGULAR_NONE); 
     adc_external_trigger_config(ADC_REGULAR_CHANNEL, ENABLE);
-    adc_enable();  //先打开 ADC 模块
-    delay_1ms(10);  //等 ADC 模拟部分稳定
-    adc_calibration_enable();  //做校准，让转换结果更准
-    adc_dma_mode_enable();  //ADC每次转换完成后，不是让CPU自己去读，而是交给DMA自动搬运。也就是说：ADC负责采样,DMA负责搬数据,CPU只在DMA中断时做高层处理,这就是这个工程效率比较高的原因
-    adc_software_trigger_enable(ADC_REGULAR_CHANNEL);  //表示先由软件触发 regular 转换开始
-    gd_eval_dma_init(length);  //配置 DMA,长度是 length
+    
+    adc_enable();
+    delay_1ms(10);
+    adc_calibration_enable();
+    adc_dma_mode_enable();
+    
+    /* 核心启动指令：由软件启动第一次转换，后续由于 DMA 循环模式，ADC 会一直自动采样下去 */
+    adc_software_trigger_enable(ADC_REGULAR_CHANNEL);
+    gd_eval_dma_init(length);
 }
 
-/* 初始化电源使能引脚 ，把所有电源控制脚准备好，并确保系统刚启动时所有受控电源都处于安全关闭状态
-把 5 路“电源使能输出脚”统一初始化成 GPIO 推挽输出，每初始化完一路 GPIO，就立刻把这一路电源控制信号拉到“安全禁用态”，避免系统刚上电时误开启某路电源*/
+/* 
+ * 初始化电源使能引脚。
+ * 这里的核心思想是：先配置为输出，并立刻将所有引脚拉到“禁用电平”，确保上电瞬间系统是安全的。
+ */
 void gd_eval_power_en_init(void)
 {
-    for (uint32_t i = 0; i < POWER_EN_NUM; i++)  //逐个处理 5 路输出，按映射表POWER_EN_PIN_INFO[i]，顺序对应 POWER_EN_2V / 5V / 9V / 36V / 13V
+    for (uint32_t i = 0; i < POWER_EN_NUM; i++)
     {
-        rcu_periph_clock_enable(POWER_EN_PIN_INFO[i].clk);  //打开这个 GPIO 端口的时钟
-        gpio_mode_set(POWER_EN_PIN_INFO[i].port, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, POWER_EN_PIN_INFO[i].pin);  //设成输出模式
+        rcu_periph_clock_enable(POWER_EN_PIN_INFO[i].clk);
+        gpio_mode_set(POWER_EN_PIN_INFO[i].port, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, POWER_EN_PIN_INFO[i].pin);
         gpio_output_options_set(POWER_EN_PIN_INFO[i].port, 
-            GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, POWER_EN_PIN_INFO[i].pin);  //设成推挽输出、高速.这些脚之后不再是输入或复用功能，而是由软件直接拉高/拉低，专门拿来发“使能/禁用”信号
+            GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, POWER_EN_PIN_INFO[i].pin);
         
-        /* 初始状态全部设为禁用，传 0 的含义是“禁用”，底层函数会自动换算成该输出脚该写高还是写低。这样你就不用记每一路的硬件极性。 */
-        /*把当前循环处理到的那一路电源使能脚”传进去,后面的 0是表示业务语义上的“禁用这路电源”。*/
-        gd_eval_power_en_set((power_en_typedef_enum)i, 0); //(power_en_typedef_enum)i只是强类型转换，最后的值还是i对应的某电压输出口
+        /* 调用逻辑设置接口，屏蔽掉硬件上的高/低有效差异 */
+        gd_eval_power_en_set((power_en_typedef_enum)i, 0); 
     }
 }
 

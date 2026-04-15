@@ -121,32 +121,20 @@ void process_system_state(void)
     /* 系统逻辑处理 */
     switch (g_system_state) 
     {
-        case SYS_IDLE:
-        {
-            /* 起点状态: 外部 48V 还没被确认稳定，所有受控输出保持关闭。 */
-            if (check_rail_ok(ADC_CH_48V)) 
-            {
-                g_system_state = SYS_STARTUP_5V;
-                gd_eval_power_en_set(POWER_EN_5V, 1);
-            }
-            break;
-        }
-
         case SYS_STARTUP_5V:
         {
             /*
-             * 5V 是第一路受控输出。
-             * 只要 48V 在等待过程中掉线，就撤回 5V 并退回起点重新等。
+             * 5V 启动阶段：
+             * 这里实现了软依赖判定：如果 48V 在此时掉线，系统会关掉 5V 并回到起点重新等待。
              */
             if (!check_rail_ok(ADC_CH_48V)) 
             {
-                /* 这里不记为故障，因为系统还处于上电准备阶段。 */
                 gd_eval_power_en_set(POWER_EN_5V, 0);
                 g_system_state = SYS_IDLE;
             } 
             else if (check_rail_ok(ADC_CH_5V)) 
             {
-                /* 5V 自身稳定后，再检查 9V 所需依赖是否已经具备。 */
+                /* 5V 稳定后，且底板 3.3V 也准备好，才允许开启 9V */
                 if (check_rail_ok(ADC_CH_V3P3)) 
                 {
                     gd_eval_power_en_set(POWER_EN_9V, 1);
@@ -158,13 +146,15 @@ void process_system_state(void)
 
         case SYS_STARTUP_9V:
         {
-            /* 进入该状态意味着 9V 使能已经发出，现在只等待采样确认。 */
+            /* 
+             * 9V 启动阶段：
+             * 如果过程中任何一个先决条件（48V, 5V, 3.3V）失效，视为启动异常，进入故障锁定流程。
+             */
             if (!check_rail_ok(ADC_CH_48V) || !check_rail_ok(ADC_CH_5V) || !check_rail_ok(ADC_CH_V3P3)) 
             {
-                /* 已经走到中途时依赖丢失，按启动失败处理并锁定。 */
                 handle_fault_sequence(FAULT_OTHER);
             } else if (check_rail_ok(ADC_CH_9V)) {
-                /* 开启 2V (依赖: 48, 5, 3.3, 9) */
+                /* 开启 2V */
                 gd_eval_power_en_set(POWER_EN_2V, 1);
                 g_system_state = SYS_STARTUP_2V;
             }
