@@ -1,8 +1,10 @@
 #include "gd32e230c_eval.h"
 #include "gd32e23x_adc.h"
 #include "gd32e23x_dma.h"
+#include "gd32e23x_i2c.h"
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 
 /* 内部数据缓冲区 (由 DMA 异步填充) */
@@ -14,15 +16,16 @@ static adc_channel_state_t adc_chan_states[8];  //表示系统给 8 路 ADC 每�
  * ignore：是否忽略（true：忽略这一路 false：恢复这一路参与判定）
  * 如果后续某一路不需要参与逻辑，可调用 gd_eval_adc_set_ignore() 屏蔽。
  */
+ 
 static adc_threshold_t adc_chan_thresholds[8] = {
-    {2000, 2100, false},
-    {2000, 2100, false},
-    {2000, 2100, false},
-    {2000, 2100, false},
-    {2000, 2100, false},
-    {2000, 2100, false},
-    {2000, 2100, false},
-    {2000, 2100, false}
+    {2000, 2100, false},    //ADC_CH_48V
+    {2000, 2100, false},    //ADC_CH_36V
+    {2000, 2100, false},    //ADC_CH_9V 
+    {2000, 2100, false},    //ADC_CH_13V
+    {2000, 2100, false},    //ADC_CH_1.4V
+    {2000, 2100, false},    //ADC_CH_2V
+    {2000, 2100, false},    //ADC_CH_5V
+    {2000, 2100, false}     //ADC_CH_3.3V
 };
 
 /* 延迟函数弱定义 */
@@ -35,11 +38,9 @@ static const gd32e230c_pin_info_t LED_GPIO_PIN_INFO[LEDn] = {
     {LED2_PIN, LED2_GPIO_PORT, LED2_GPIO_CLK},
 };
 
-//5路输出映射表
+//3路输出映射表
 static const gd32e230c_pin_info_t POWER_EN_PIN_INFO[POWER_EN_NUM] = {
     {POWER_EN_2V_PIN,  POWER_EN_2V_PORT,  POWER_EN_2V_CLK},
-    {POWER_EN_5V_PIN,  POWER_EN_5V_PORT,  POWER_EN_5V_CLK},
-    {POWER_EN_9V_PIN,  POWER_EN_9V_PORT,  POWER_EN_9V_CLK},
     {POWER_EN_36V_PIN, POWER_EN_36V_PORT, POWER_EN_36V_CLK},
     {POWER_EN_13V_PIN, POWER_EN_13V_PORT, POWER_EN_13V_CLK},
 };
@@ -184,18 +185,11 @@ void gd_eval_power_en_set(power_en_typedef_enum en_idx, uint8_t state)
     uint8_t level = 0;
     switch(en_idx) 
     {
-        case POWER_EN_5V:
         case POWER_EN_13V:
-        {
-            level = state; /* 高有效,传 0 就会输出低电平，表示禁用 */
-            break;
-        }
-            
-        case POWER_EN_9V:
         case POWER_EN_2V:
         case POWER_EN_36V:
         {
-            level = !state; /* 低有效，当要使能(state=1)时，输出低(level=0),传 0 就会输出高电平，表示禁用 */
+            level = state; /* 统一改为高电平有效 (state=1 -> level=1) */
             break;
         }
         default: 
@@ -249,95 +243,39 @@ static void gd_eval_adc_default_config(uint32_t channel_length)
 }
 
 /**
- * @brief 通过 PA9 (USART0_TX) 发送带校验的编译信息 ($BOOT...*XX\r\n)
- * @note  采用类似 NMEA 0183 协议的 XOR 校验，方便主控端稳健解析
+ * @brief 初始化 I2C0 为从机模式 (PA9:SCL, PA10:SDA)
+ * @param slave_addr 从机地址 (7-bit)
  */
-void gd_uart_debug_send_info(void)
+void gd_eval_i2c_init(uint8_t slave_addr)
 {
     /* 1. 开启时钟 */
     rcu_periph_clock_enable(RCU_GPIOA);
-    rcu_periph_clock_enable(RCU_USART0);
+    rcu_periph_clock_enable(RCU_I2C0);
 
-    /* 2. 配置 PA9 为复用功能 USART0_TX */
-    gpio_af_set(GPIOA, GPIO_AF_1, GPIO_PIN_9);
-    gpio_mode_set(GPIOA, GPIO_MODE_AF, GPIO_PUPD_PULLUP, GPIO_PIN_9);
-    gpio_output_options_set(GPIOA, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_9);
+    /* 2. 配置 PA9(SCL) 和 PA10(SDA) 为复用开漏模式 (AF4) */
+    gpio_af_set(GPIOA, GPIO_AF_4, GPIO_PIN_9);
+    gpio_af_set(GPIOA, GPIO_AF_4, GPIO_PIN_10);
+    
+    gpio_mode_set(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO_PIN_9);
+    gpio_output_options_set(GPIOA, GPIO_OTYPE_OD, GPIO_OSPEED_50MHZ, GPIO_PIN_9);
+    
+    gpio_mode_set(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO_PIN_10);
+    gpio_output_options_set(GPIOA, GPIO_OTYPE_OD, GPIO_OSPEED_50MHZ, GPIO_PIN_10);
 
-    /* 3. 配置 USART0 (115200, 8-N-1) */
-    usart_deinit(USART0);
-    usart_baudrate_set(USART0, 115200U);
-    usart_word_length_set(USART0, USART_WL_8BIT);
-    usart_stop_bit_set(USART0, USART_STB_1BIT);
-    usart_parity_config(USART0, USART_PM_NONE);
-    usart_hardware_flow_rts_config(USART0, USART_RTS_DISABLE);
-    usart_hardware_flow_cts_config(USART0, USART_CTS_DISABLE);
-    usart_receive_config(USART0, USART_RECEIVE_DISABLE);
-    usart_transmit_config(USART0, USART_TRANSMIT_ENABLE);
-    usart_enable(USART0);
+    /* 3. I2C 参数配置 */
+    i2c_deinit(I2C0);
+    /* 从机模式也建议配置时钟速度，确保总线兼容性 */
+    i2c_clock_config(I2C0, 100000, I2C_DTCY_2); 
+    i2c_mode_addr_config(I2C0, I2C_I2CMODE_ENABLE, I2C_ADDFORMAT_7BITS, slave_addr << 1);
+    i2c_ack_config(I2C0, I2C_ACK_ENABLE);
+    
+    i2c_enable(I2C0);
 
-    /* 4. 组装数据并计算 XOR 校验和 */
-    char content[64];
-    uint8_t checksum = 0;
+    /* 4. 使能中断 (事件与错误) */
+    i2c_interrupt_enable(I2C0, I2C_INT_ERR);
+    i2c_interrupt_enable(I2C0, I2C_INT_EV);
+    i2c_interrupt_enable(I2C0, I2C_INT_BUF);
     
-    // 生成核心数据部分: BOOT,DATE=...,TIME=...
-    int data_len = snprintf(content, sizeof(content), "BOOT,DATE=%s,TIME=%s", __DATE__, __TIME__);
-    
-    // 对核心内容进行异或
-    for(int i = 0; i < data_len; i++) {
-        checksum ^= (uint8_t)content[i];
-    }
-    
-    // 拼装完整帧: $ + 内容 + * + 2位16进制校验 + \r\n
-    char final_packet[128];
-    int packet_len = snprintf(final_packet, sizeof(final_packet), "$%s*%02X\r\n", content, checksum);
-    
-    // 发送
-    for(int i = 0; i < packet_len; i++) {
-        usart_data_transmit(USART0, (uint8_t)final_packet[i]);
-        while(RESET == usart_flag_get(USART0, USART_FLAG_TBE));
-    }
-    
-    /* 等待最后一帧数据发送完毕 */
-    while(RESET == usart_flag_get(USART0, USART_FLAG_TC));
-
-    /* 5. 现场清理并恢复 PA9 为 GPIO 高电平 (禁用 9V) */
-    usart_disable(USART0);
-    rcu_periph_clock_disable(RCU_USART0);
-    
-    gpio_mode_set(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO_PIN_9);
-    GPIO_BOP(GPIOA) = GPIO_PIN_9; 
+    nvic_irq_enable(I2C0_EV_IRQn, 0);
+    nvic_irq_enable(I2C0_ER_IRQn, 1);
 }
-
-/*
- * [接收端参考伪代码 - 用于主控端解析 GD32 发出的引导信息]
- * -----------------------------------------------------------------------------------------
- * // 示例输入包: "$BOOT,DATE=Apr 10 2024,TIME=12:48:00*4F\r\n"
- * 
- * void process_gd32_boot_packet(char *packet_str) {
- *     char *start_ptr = strchr(packet_str, '$');
- *     char *end_ptr = strchr(packet_str, '*');
- *     
- *     if (start_ptr && end_ptr && (end_ptr > start_ptr)) {
- *         uint8_t calculated_xor = 0;
- *         
- *         // 1. 计算 $ 和 * 之间所有字符的异或值
- *         for (char *p = start_ptr + 1; p < end_ptr; p++) {
- *             calculated_xor ^= (uint8_t)(*p);
- *         }
- *         
- *         // 2. 解析字符串结尾的 2 位十六进制校验码
- *         unsigned int received_xor = 0;
- *         if (sscanf(end_ptr + 1, "%02X", &received_xor) == 1) {
- *             
- *             // 3. 比对校验值
- *             if (calculated_xor == (uint8_t)received_xor) {
- *                 // [校验成功] 数据完整，可以放心解析 DATE 和 TIME 字段
- *                 // 使用 sscanf(start_ptr, "$BOOT,DATE=%[^,],TIME=%[^*]", date_buf, time_buf);
- *             } else {
- *                 // [校验失败] 数据在传输过程中可能受到电磁干扰
- *             }
- *         }
- *     }
- * }
- * -----------------------------------------------------------------------------------------
- */

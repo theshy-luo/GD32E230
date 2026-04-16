@@ -55,10 +55,8 @@ typedef enum {
 /* 电源使能信号输出索引 */
 typedef enum {
     POWER_EN_2V  = 0,
-    POWER_EN_5V  = 1,
-    POWER_EN_9V  = 2,
-    POWER_EN_36V = 3,
-    POWER_EN_13V = 4,
+    POWER_EN_36V = 1,
+    POWER_EN_13V = 2,
 } power_en_typedef_enum;
 
 /* ADC 通道逻辑映射 */
@@ -99,7 +97,7 @@ typedef struct {
 /* ----------------- 硬件资源常量 ----------------- */
 
 #define LEDn            2U
-#define POWER_EN_NUM    5U
+#define POWER_EN_NUM    3U
 #define ADC_CHANNEL_NUM 8U
 
 /* LED 引脚定义 (PF组) */
@@ -111,18 +109,9 @@ typedef struct {
 #define LED2_GPIO_PORT  GPIOF
 #define LED2_GPIO_CLK   GPIOF
 
-/* 电压判定输出引脚定义 */
 #define POWER_EN_2V_PIN   GPIO_PIN_1
 #define POWER_EN_2V_PORT  GPIOB
 #define POWER_EN_2V_CLK   GPIOB
-
-#define POWER_EN_5V_PIN   GPIO_PIN_10
-#define POWER_EN_5V_PORT  GPIOA
-#define POWER_EN_5V_CLK   GPIOA
-
-#define POWER_EN_9V_PIN   GPIO_PIN_9
-#define POWER_EN_9V_PORT  GPIOA
-#define POWER_EN_9V_CLK   GPIOA
 
 #define POWER_EN_36V_PIN  GPIO_PIN_13
 #define POWER_EN_36V_PORT GPIOA
@@ -142,7 +131,7 @@ void gd_eval_adc_set_ignore(uint8_t index, bool ignore);
 adc_threshold_t gd_eval_adc_get_threshold(uint8_t index);
 
 /* 通讯与调试 */
-void gd_uart_debug_send_info(void);
+void gd_eval_i2c_init(uint8_t slave_addr);
 void gd_eval_led_init(led_typedef_enum lednum);
 void gd_eval_led_on(led_typedef_enum lednum);
 void gd_eval_led_off(led_typedef_enum lednum);

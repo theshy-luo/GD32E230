@@ -48,13 +48,13 @@ int main(void)
     /* 预留 500ms 调试窗口 */
     delay_1ms(100);
     
-    /* 连续发送 3 次开机信息，确保主控即便启动稍慢也能稳定接收 */
-    for(int i = 0; i < 3; i++) {
-        gd_uart_debug_send_info(); 
-        delay_1ms(50);
-    }
+    /* 预留 500ms 调试窗口 */
+    delay_1ms(100);
     
-    delay_1ms(250); 
+    /* 初始化 I2C 从机 (地址 0x30) */
+    gd_eval_i2c_init(0x30);
+    
+    delay_1ms(400); 
 
     /* 1. 初始化外设 */
     gd_eval_led_init(LED1);
@@ -123,21 +123,19 @@ void process_system_state(void)
     {
         case SYS_STARTUP_5V:
         {
-            /*
-             * 5V 启动阶段：
-             * 这里实现了软依赖判定：如果 48V 在此时掉线，系统会关掉 5V 并回到起点重新等待。
+            /* 
+             * 5V 监听阶段：
+             * 虽然不再控制 5V 使能，但仍监测其电压是否稳定。
              */
             if (!check_rail_ok(ADC_CH_48V)) 
             {
-                gd_eval_power_en_set(POWER_EN_5V, 0);
                 g_system_state = SYS_IDLE;
             } 
             else if (check_rail_ok(ADC_CH_5V)) 
             {
-                /* 5V 稳定后，且底板 3.3V 也准备好，才允许开启 9V */
+                /* 5V 稳定后，且底板 3.3V 也准备好，则认为可以进入 9V 监测阶段 */
                 if (check_rail_ok(ADC_CH_V3P3)) 
                 {
-                    gd_eval_power_en_set(POWER_EN_9V, 1);
                     g_system_state = SYS_STARTUP_9V;
                 }
             }
@@ -274,14 +272,14 @@ void handle_fault_sequence(fault_type_t type)
 
     if (type == FAULT_48V) 
     {
-        /* 48V不正常：只输出 36V 不 OK 信号 (36V使能设为禁用) */
+        /* 48V不正常：熄灭所有受控输出 */
         gd_eval_power_en_set(POWER_EN_36V, 0);
     } 
     else 
     {
-        /* 其他七路异常：按照 36V -> 13V -> 2V 顺序输出信号 (禁用) */
+        /* 其他异常：按照 36V -> 13V -> 2V 顺序顺序切断 */
         gd_eval_power_en_set(POWER_EN_36V, 0);
-        delay_1ms(50); /* 微小间隔确保顺序特性 */
+        delay_1ms(50); 
         gd_eval_power_en_set(POWER_EN_13V, 0);
         delay_1ms(50);
         gd_eval_power_en_set(POWER_EN_2V, 0);
