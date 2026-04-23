@@ -1,7 +1,43 @@
+/*!
+    \file    gd32e230c_eval.c
+    \brief   GD32E230C_EVAL 板级支持包 (BSP) 源文件
+             包含 LED 控制、ADC 采样、DMA 配置、电源使能及 I2C 从机初始化等功能的具体实现。
+
+    \version 2026-04-19, V2.5.0, firmware for GD32E23x
+*/
+
+/*
+    Copyright (c) 2026, GigaDevice Semiconductor Inc.
+
+    Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    1. Redistributions of source code must retain the above copyright notice,
+this list of conditions and the following disclaimer.
+    2. Redistributions in binary form must reproduce the above copyright notice,
+       this list of conditions and the following disclaimer in the documentation
+       and/or other materials provided with the distribution.
+    3. Neither the name of the copyright holder nor the names of its
+contributors may be used to endorse or promote products derived from this
+software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #include "gd32e230c_eval.h"
 #include "gd32e23x_adc.h"
 #include "gd32e23x_dma.h"
 #include "gd32e23x_i2c.h"
+#include "gd32e23x_usart.h"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -278,4 +314,74 @@ void gd_eval_i2c_init(uint8_t slave_addr)
     
     nvic_irq_enable(I2C0_EV_IRQn, 0);
     nvic_irq_enable(I2C0_ER_IRQn, 1);
+}
+
+/**
+ * @brief 初始化 USART0 (PA9:TX, PA10:RX)
+ * @param baudrate 波特率 (如 115200)
+ */
+void gd_eval_uart_init(uint32_t baudrate)
+{
+    /* 1. 开启时钟 */
+    rcu_periph_clock_enable(RCU_GPIOA);
+    rcu_periph_clock_enable(RCU_USART0);
+
+    /* 2. 配置 PA9(TX) 和 PA10(RX) 为复用模式 (AF1) */
+    gpio_af_set(GPIOA, GPIO_AF_1, GPIO_PIN_9);
+    gpio_af_set(GPIOA, GPIO_AF_1, GPIO_PIN_10);
+    
+    gpio_mode_set(GPIOA, GPIO_MODE_AF, GPIO_PUPD_PULLUP, GPIO_PIN_9);
+    gpio_output_options_set(GPIOA, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_9);
+    
+    gpio_mode_set(GPIOA, GPIO_MODE_AF, GPIO_PUPD_PULLUP, GPIO_PIN_10);
+    gpio_output_options_set(GPIOA, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_10);
+
+    /* 3. USART 参数配置 */
+    usart_deinit(USART0);
+    usart_baudrate_set(USART0, baudrate);
+    usart_receive_config(USART0, USART_RECEIVE_ENABLE);
+    usart_transmit_config(USART0, USART_TRANSMIT_ENABLE);
+    
+    usart_enable(USART0);
+
+    /* 4. 使能接收中断 */
+    usart_interrupt_enable(USART0, USART_INT_RBNE);
+    nvic_irq_enable(USART0_IRQn, 0);
+}
+
+/**
+ * @brief 通过串口发送一个简单的带头部和校验的数据包
+ * 格式: [0x55] [0xAA] [Type] [Len] [Data...] [Checksum]
+ */
+void gd_eval_uart_send_data(uint8_t type, uint8_t *data, uint16_t len)
+{
+    uint8_t header[2] = {0x55, 0xAA};
+    uint8_t checksum = 0;
+    
+    // 发送包头
+    for(int i = 0; i < 2; i++) {
+        usart_data_transmit(USART0, header[i]);
+        while(RESET == usart_flag_get(USART0, USART_FLAG_TBE));
+    }
+    
+    // 发送类型
+    usart_data_transmit(USART0, type);
+    while(RESET == usart_flag_get(USART0, USART_FLAG_TBE));
+    checksum += type;
+    
+    // 发送长度
+    usart_data_transmit(USART0, (uint8_t)len);
+    while(RESET == usart_flag_get(USART0, USART_FLAG_TBE));
+    checksum += (uint8_t)len;
+    
+    // 发送数据
+    for(int i = 0; i < len; i++) {
+        usart_data_transmit(USART0, data[i]);
+        while(RESET == usart_flag_get(USART0, USART_FLAG_TBE));
+        checksum += data[i];
+    }
+    
+    // 发送校验和
+    usart_data_transmit(USART0, checksum);
+    while(RESET == usart_flag_get(USART0, USART_FLAG_TBE));
 }

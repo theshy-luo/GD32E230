@@ -51,15 +51,23 @@ int main(void)
     /* 预留 500ms 调试窗口 */
     delay_1ms(100);
     
-    /* 初始化 I2C 从机 (地址 0x30) */
-    gd_eval_i2c_init(0x30);
+    /* 初始化串口 (115200 波特率) */
+    gd_eval_uart_init(115200);
     
     delay_1ms(400); 
 
     /* 1. 初始化外设 */
     gd_eval_led_init(LED1);
     gd_eval_led_init(LED2);
+		
+		gd_eval_led_on(LED1);
     gd_eval_power_en_init();  //确保系统刚启动时所有受控电源都处于安全关闭状态
+		
+		
+		gd_eval_led_on(LED2);
+		delay_1ms(100);
+		gd_eval_led_off(LED2);
+
     
     /* 2. 初始化 ADC (DMA + 中断超采样), 按设定顺序不断循环采 8 路电压 */
     gd_eval_adc_init_multi_channel(channels, 8);
@@ -73,7 +81,7 @@ int main(void)
         if (adc_data_ready_flag) 
         {
             adc_data_ready_flag = 0;
-            process_system_state(); 
+            //process_system_state(); 
         }
         
         /* 低功耗运行 */
@@ -153,7 +161,7 @@ void process_system_state(void)
                 handle_fault_sequence(FAULT_OTHER);
             } else if (check_rail_ok(ADC_CH_9V)) {
                 /* 开启 2V */
-                gd_eval_power_en_set(POWER_EN_2V, 1);
+                gd_eval_power_en_set(POWER_EN_2V, 0);
                 g_system_state = SYS_STARTUP_2V;
             }
             break;
@@ -187,7 +195,7 @@ void process_system_state(void)
             else if (check_rail_ok(ADC_CH_13V)) 
             {
                 /* 开启 36V (依赖: 48, 5, 3.3, 9, 2, 13) */
-                gd_eval_power_en_set(POWER_EN_36V, 1);
+                gd_eval_power_en_set(POWER_EN_36V, 0);
                 g_system_state = SYS_STARTUP_36V;
             }
             break;

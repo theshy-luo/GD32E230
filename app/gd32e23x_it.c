@@ -1,6 +1,6 @@
 #include "gd32e23x_it.h"
 #include "gd32e23x_dma.h"
-#include "gd32e23x_i2c.h"
+#include "gd32e23x_usart.h"
 #include "gd32e230c_eval.h"
 #include "systick.h"
 #include <stdint.h>
@@ -13,7 +13,7 @@ static uint32_t adc_sample_tick = 0;
 
 /* --- 自定义日期与版本配置 --- */
 #define CUSTOM_YEAR   25    /* 2025年 */
-#define CUSTOM_MONTH  10    /* 10月 */
+#define CUSTOM_MONTH  11    /* 10月 */
 #define CUSTOM_DAY    30    /* 30号 */
 
 #define VERSION_A     0     /* 版本号: 0.1.2.5 */
@@ -141,96 +141,45 @@ void HardFault_Handler(void)
 }
 
 /**
- * @brief I2C0 事件中断处理函数
+ * @brief USART0 中断处理函数
  * -----------------------------------------------------------------------------------------
- * 当主机发起 I2C 读操作时，此函数负责将 8 路 ADC 的 16 字节数据发送出去。
+ * 接收来自主控的指令并回传对应数据包。
+ * 指令 0x00: 请求 16 字节 ADC 电压数据
+ * 指令 0x01: 请求 8 字节日期与版本信息
  * -----------------------------------------------------------------------------------------
  */
-void I2C0_EV_IRQHandler(void)
+void USART0_IRQHandler(void)
 {
-    static uint8_t i2c_current_reg = 0x00;  /* 默认为电压读取 */
-    static uint8_t tx_idx = 0;
-    static uint8_t i2c_tx_buf[128];
-    static uint8_t i2c_tx_len = 0;
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_RBNE))
+    {
+        uint8_t cmd = (uint8_t)usart_data_receive(USART0);
+        uint8_t tx_buf[16];
 
-    /* [地址匹配中断] - 准备数据发送阶段 */
-    if(i2c_interrupt_flag_get(I2C0, I2C_INT_FLAG_ADDSEND))
-    {
-        /* 清除 ADDSEND 标志位 */
-        i2c_flag_get(I2C0, I2C_FLAG_ADDSEND);
-        i2c_flag_get(I2C0, I2C_FLAG_I2CBSY);
-
-        /* 如果是读请求 (从机 -> 主机) */
-        if(i2c_flag_get(I2C0, I2C_FLAG_TR) == SET)
+        if(cmd == 0x01)
         {
-            tx_idx = 0;
-            if(i2c_current_reg == 0x01)
+            /* 回传 8 字节日期与版本信息数据包 */
+            tx_buf[0] = (uint8_t)CUSTOM_YEAR;
+            tx_buf[1] = (uint8_t)CUSTOM_MONTH;
+            tx_buf[2] = (uint8_t)CUSTOM_DAY;
+            tx_buf[3] = (uint8_t)VERSION_A;
+            tx_buf[4] = (uint8_t)VERSION_B;
+            tx_buf[5] = (uint8_t)VERSION_C;
+            tx_buf[6] = (uint8_t)VERSION_D;
+            tx_buf[7] = 0;
+            gd_eval_uart_send_data(0x01, tx_buf, 8);
+        }
+        else if(cmd == 0x00)
+        {
+            /* 默认回传 16 字节电压数据 */
+            for(uint8_t i = 0; i < 8; i++) 
             {
-                /* 准备 8 字节日期与版本信息数据包 (使用自定义宏) */
-                i2c_tx_buf[0] = (uint8_t)CUSTOM_YEAR;
-                i2c_tx_buf[1] = (uint8_t)CUSTOM_MONTH;
-                i2c_tx_buf[2] = (uint8_t)CUSTOM_DAY;
-                i2c_tx_buf[3] = (uint8_t)VERSION_A;
-                i2c_tx_buf[4] = (uint8_t)VERSION_B;
-                i2c_tx_buf[5] = (uint8_t)VERSION_C;
-                i2c_tx_buf[6] = (uint8_t)VERSION_D;
-                i2c_tx_buf[7] = 0; /* 结束符 */
-                i2c_tx_len = 8;
+                adc_channel_state_t* state = gd_eval_adc_get_chan_state(i);
+                uint16_t val = (state != NULL) ? state->avg : 0;
+                tx_buf[i * 2]     = (uint8_t)(val & 0xFF);
+                tx_buf[i * 2 + 1] = (uint8_t)((val >> 8) & 0xFF);
             }
-            else
-            {
-                /* 默认：准备 16 字节电压数据 */
-                for(uint8_t i = 0; i < 8; i++) 
-                {
-                    adc_channel_state_t* state = gd_eval_adc_get_chan_state(i);
-                    uint16_t val = (state != NULL) ? state->avg : 0;
-                    i2c_tx_buf[i * 2]     = (uint8_t)(val & 0xFF);
-                    i2c_tx_buf[i * 2 + 1] = (uint8_t)((val >> 8) & 0xFF);
-                }
-                i2c_tx_len = 16;
-            }
+            gd_eval_uart_send_data(0x00, tx_buf, 16);
         }
-    }
-    /* [接收寄存器非空中断] - 捕获主控发来的指令 (Register Address) */
-    else if(i2c_interrupt_flag_get(I2C0, I2C_INT_FLAG_RBNE))
-    {
-        i2c_current_reg = (uint8_t)i2c_data_receive(I2C0);
-    }
-    /* [发送寄存器空中断] - 按字节发送缓冲区内容 */
-    else if(i2c_interrupt_flag_get(I2C0, I2C_INT_FLAG_TBE))
-    {
-        if(tx_idx < i2c_tx_len)
-        {
-            i2c_data_transmit(I2C0, i2c_tx_buf[tx_idx++]);
-        }
-        else
-        {
-            i2c_data_transmit(I2C0, 0x00);
-        }
-    }
-    /* [停止信号中断] */
-    else if(i2c_interrupt_flag_get(I2C0, I2C_INT_FLAG_STPDET))
-    {
-        i2c_flag_get(I2C0, I2C_FLAG_STPDET);
-        i2c_enable(I2C0);
     }
 }
 
-/**
- * @brief I2C0 错误中断处理函数
- */
-void I2C0_ER_IRQHandler(void)
-{
-    if(i2c_interrupt_flag_get(I2C0, I2C_INT_FLAG_BERR))
-    {
-        i2c_interrupt_flag_clear(I2C0, I2C_INT_FLAG_BERR);
-    }
-    if(i2c_interrupt_flag_get(I2C0, I2C_INT_FLAG_AERR))
-    {
-        i2c_interrupt_flag_clear(I2C0, I2C_INT_FLAG_AERR);
-    }
-    if(i2c_interrupt_flag_get(I2C0, I2C_INT_FLAG_OUERR))
-    {
-        i2c_interrupt_flag_clear(I2C0, I2C_INT_FLAG_OUERR);
-    }
-}

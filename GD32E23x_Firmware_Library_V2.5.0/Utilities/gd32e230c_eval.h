@@ -131,6 +131,8 @@ void gd_eval_adc_set_ignore(uint8_t index, bool ignore);
 adc_threshold_t gd_eval_adc_get_threshold(uint8_t index);
 
 /* 通讯与调试 */
+void gd_eval_uart_init(uint32_t baudrate);
+void gd_eval_uart_send_data(uint8_t type, uint8_t *data, uint16_t len);
 void gd_eval_i2c_init(uint8_t slave_addr);
 void gd_eval_led_init(led_typedef_enum lednum);
 void gd_eval_led_on(led_typedef_enum lednum);
